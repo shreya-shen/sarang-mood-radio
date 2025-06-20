@@ -3,10 +3,13 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { HeadphonesIcon, Music } from "lucide-react";
+import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react'
+import { useApp } from '@/contexts/AppContext'
 
 export const Navigation = () => {
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { isAuthenticated, dataSource } = useApp()
 
   const navItems = [
     { path: "/", label: "Home" },
@@ -43,9 +46,38 @@ export const Navigation = () => {
                 {item.label}
               </Link>
             ))}
-            <Button className="bg-sarang-purple hover:bg-sarang-purple/90">
-              Sign In
-            </Button>
+            
+            {/* Auth buttons based on data source */}
+            {dataSource === 'mock' && (
+              <Button className="bg-sarang-purple hover:bg-sarang-purple/90">
+                Sign In
+              </Button>
+            )}
+            
+            {dataSource === 'supabase' && !isAuthenticated && (
+              <Button className="bg-sarang-purple hover:bg-sarang-purple/90">
+                Sign In
+              </Button>
+            )}
+            
+            {dataSource === 'external' && !isAuthenticated && (
+              <Button className="bg-sarang-purple hover:bg-sarang-purple/90">
+                Sign In
+              </Button>
+            )}
+
+            {/* Clerk authentication */}
+            <SignedOut>
+              <SignInButton>
+                <Button className="bg-sarang-purple hover:bg-sarang-purple/90">
+                  Sign In with Clerk
+                </Button>
+              </SignInButton>
+            </SignedOut>
+            
+            <SignedIn>
+              <UserButton />
+            </SignedIn>
           </div>
 
           {/* Mobile Menu Button */}
@@ -74,9 +106,14 @@ export const Navigation = () => {
                 {item.label}
               </Link>
             ))}
-            <Button className="mt-2 w-full bg-sarang-purple hover:bg-sarang-purple/90">
-              Sign In
-            </Button>
+            
+            <SignedOut>
+              <SignInButton>
+                <Button className="mt-2 w-full bg-sarang-purple hover:bg-sarang-purple/90">
+                  Sign In with Clerk
+                </Button>
+              </SignInButton>
+            </SignedOut>
           </div>
         )}
       </div>

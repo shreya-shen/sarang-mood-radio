@@ -7,11 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Music, User, Bell, Download, Link as LinkIcon, Unlink } from "lucide-react";
 import { toast } from "sonner";
+import { DataSourceSelector } from "@/components/DataSourceSelector";
+import { useApp } from "@/contexts/AppContext";
 
 const Settings = () => {
-  const [spotifyLinked, setSpotifyLinked] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const [autoExport, setAutoExport] = useState(false);
+  const { spotifyLinked, setSpotifyLinked, dataSource, isAuthenticated } = useApp();
 
   const handleSpotifyConnect = () => {
     if (spotifyLinked) {
@@ -57,6 +59,9 @@ const Settings = () => {
         </p>
       </div>
 
+      {/* Data Source Configuration */}
+      <DataSourceSelector />
+
       {/* Profile Section */}
       <Card className="mood-card">
         <CardHeader>
@@ -72,11 +77,15 @@ const Settings = () => {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-medium text-gray-800">Account Status</h3>
-              <p className="text-sm text-gray-600">You're currently using Sarang as a guest</p>
+              <p className="text-sm text-gray-600">
+                {isAuthenticated ? `Signed in via ${dataSource}` : "Currently using as guest"}
+              </p>
             </div>
-            <Button className="bg-sarang-purple hover:bg-sarang-purple/90">
-              Create Account
-            </Button>
+            {!isAuthenticated && (
+              <Button className="bg-sarang-purple hover:bg-sarang-purple/90">
+                Create Account
+              </Button>
+            )}
           </div>
           
           <Separator />
