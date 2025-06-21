@@ -1,6 +1,5 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { useUser } from '@clerk/clerk-react'
 import { supabaseService } from '@/services/supabase'
 
 type DataSource = 'mock' | 'supabase' | 'external'
@@ -12,24 +11,33 @@ interface AppContextType {
   isAuthenticated: boolean
   spotifyLinked: boolean
   setSpotifyLinked: (linked: boolean) => void
+  loading: boolean
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [dataSource, setDataSource] = useState<DataSource>('mock')
+  const [dataSource, setDataSource] = useState<DataSource>('supabase')
   const [spotifyLinked, setSpotifyLinked] = useState(false)
-  const { user: clerkUser } = useUser()
-  const [supabaseUser, setSupabaseUser] = useState(null)
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check for Supabase user
-    supabaseService.getCurrentUser().then(user => {
-      if (user) setSupabaseUser(user)
-    })
+    // Get initial user
+    const getUser = async () => {
+      try {
+        const currentUser = await supabaseService.getCurrentUser()
+        setUser(currentUser)
+      } catch (error) {
+        console.log('No user session found')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    getUser()
   }, [])
 
-  const user = clerkUser || supabaseUser
   const isAuthenticated = !!user
 
   return (
@@ -39,7 +47,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       user,
       isAuthenticated,
       spotifyLinked,
-      setSpotifyLinked
+      setSpotifyLinked,
+      loading
     }}>
       {children}
     </AppContext.Provider>

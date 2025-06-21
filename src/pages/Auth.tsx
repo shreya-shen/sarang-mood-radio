@@ -4,11 +4,64 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SignInButton, SignUpButton } from '@clerk/clerk-react';
-import { Music } from "lucide-react";
+import { Music, Mail } from "lucide-react";
+import { supabaseService } from '@/services/supabase';
+import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 const Auth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+
+  const handleSpotifySignIn = async () => {
+    try {
+      setLoading(true);
+      // This will redirect to Spotify OAuth
+      const { error } = await supabaseService.signInWithSpotify();
+      if (error) {
+        toast.error("Error connecting to Spotify");
+      }
+    } catch (error) {
+      toast.error("Error connecting to Spotify");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      if (isSignUp) {
+        const { data, error } = await supabaseService.signUp(email, password);
+        if (error) {
+          toast.error(error.message);
+        } else {
+          toast.success("Check your email for verification link");
+        }
+      } else {
+        const { data, error } = await supabaseService.signIn(email, password);
+        if (error) {
+          toast.error(error.message);
+        } else {
+          toast.success("Signed in successfully!");
+          navigate("/");
+        }
+      }
+    } catch (error) {
+      toast.error("Authentication error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen gradient-bg flex items-center justify-center p-4">
@@ -48,12 +101,14 @@ const Auth = () => {
           
           <CardContent className="space-y-6">
             {/* Spotify Sign In Button */}
-            <SignInButton mode="modal">
-              <Button className="w-full bg-[#1DB954] hover:bg-[#1ed760] text-white py-3 rounded-lg font-medium flex items-center justify-center space-x-2 transition-all duration-200">
-                <Music className="w-5 h-5" />
-                <span>Continue with Spotify</span>
-              </Button>
-            </SignInButton>
+            <Button 
+              onClick={handleSpotifySignIn}
+              disabled={loading}
+              className="w-full bg-[#1DB954] hover:bg-[#1ed760] text-white py-3 rounded-lg font-medium flex items-center justify-center space-x-2 transition-all duration-200"
+            >
+              <Music className="w-5 h-5" />
+              <span>Continue with Spotify</span>
+            </Button>
 
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -65,14 +120,17 @@ const Auth = () => {
             </div>
 
             {/* Email Sign In */}
-            <div className="space-y-4">
+            <form onSubmit={handleEmailAuth} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input 
                   id="email" 
                   type="email" 
                   placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="border-gray-200 focus:border-sarang-purple focus:ring-sarang-purple"
+                  disabled={loading}
                 />
               </div>
               
@@ -82,24 +140,28 @@ const Auth = () => {
                   id="password" 
                   type="password" 
                   placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="border-gray-200 focus:border-sarang-purple focus:ring-sarang-purple"
+                  disabled={loading}
                 />
               </div>
 
-              {isSignUp ? (
-                <SignUpButton mode="modal">
-                  <Button className="w-full bg-gradient-to-r from-sarang-purple to-sarang-periwinkle hover:from-sarang-purple/90 hover:to-sarang-periwinkle/90 text-white py-3 rounded-lg font-medium transition-all duration-200">
-                    Create Account
-                  </Button>
-                </SignUpButton>
-              ) : (
-                <SignInButton mode="modal">
-                  <Button className="w-full bg-gradient-to-r from-sarang-purple to-sarang-periwinkle hover:from-sarang-purple/90 hover:to-sarang-periwinkle/90 text-white py-3 rounded-lg font-medium transition-all duration-200">
-                    Sign In
-                  </Button>
-                </SignInButton>
-              )}
-            </div>
+              <Button 
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-sarang-purple to-sarang-periwinkle hover:from-sarang-purple/90 hover:to-sarang-periwinkle/90 text-white py-3 rounded-lg font-medium transition-all duration-200 flex items-center justify-center space-x-2"
+              >
+                {loading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                ) : (
+                  <>
+                    <Mail className="w-4 h-4" />
+                    <span>{isSignUp ? "Create Account" : "Sign In"}</span>
+                  </>
+                )}
+              </Button>
+            </form>
 
             {/* Toggle Sign Up/Sign In */}
             <div className="text-center">
@@ -108,6 +170,7 @@ const Auth = () => {
                 <button
                   onClick={() => setIsSignUp(!isSignUp)}
                   className="ml-1 text-sarang-purple hover:text-sarang-purple/80 font-medium transition-colors"
+                  disabled={loading}
                 >
                   {isSignUp ? "Sign In" : "Sign Up"}
                 </button>

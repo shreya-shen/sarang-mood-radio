@@ -24,6 +24,18 @@ export const supabaseService = {
     })
   },
 
+  signInWithSpotify: async () => {
+    return handleSupabaseCall(async () => {
+      const { data, error } = await supabase!.auth.signInWithOAuth({
+        provider: 'spotify',
+        options: {
+          redirectTo: `${window.location.origin}/`
+        }
+      })
+      return { data, error }
+    })
+  },
+
   signOut: async () => {
     return handleSupabaseCall(async () => {
       const { error } = await supabase!.auth.signOut()
