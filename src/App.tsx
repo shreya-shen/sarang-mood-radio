@@ -9,6 +9,7 @@ import { CLERK_PUBLISHABLE_KEY } from '@/lib/clerk'
 import { AppProvider } from '@/contexts/AppContext'
 import { Layout } from "@/components/Layout";
 import Home from "./pages/Home";
+import Auth from "./pages/Auth";
 import Recommendations from "./pages/Recommendations";
 import MoodHistory from "./pages/MoodHistory";
 import Settings from "./pages/Settings";
@@ -28,6 +29,7 @@ const App = () => (
             <Layout>
               <Routes>
                 <Route path="/" element={<Home />} />
+                <Route path="/auth" element={<Auth />} />
                 <Route path="/recommendations" element={<Recommendations />} />
                 <Route path="/mood-history" element={<MoodHistory />} />
                 <Route path="/settings" element={<Settings />} />
