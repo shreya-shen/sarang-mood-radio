@@ -6,6 +6,7 @@ import { HeadphonesIcon, User, LogOut } from "lucide-react";
 import { useApp } from '@/contexts/AppContext'
 import { supabaseService } from '@/services/supabase'
 import { toast } from "sonner";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,14 +31,14 @@ export const Navigation = () => {
       await supabaseService.signOut()
       toast.success("Signed out successfully")
       navigate("/")
-      window.location.reload() // Refresh to update auth state
+      window.location.reload()
     } catch (error) {
       toast.error("Error signing out")
     }
   };
 
   return (
-    <nav className="bg-white/95 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
+    <nav className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 sticky top-0 z-50">
       <div className="container mx-auto px-6">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -60,10 +61,10 @@ export const Navigation = () => {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`text-sm font-medium transition-all duration-200 hover:text-sarang-purple relative ${
+                className={`text-sm font-medium transition-all duration-200 hover:text-sarang-purple dark:hover:text-sarang-periwinkle relative ${
                   location.pathname === item.path
-                    ? "text-sarang-purple"
-                    : "text-gray-600"
+                    ? "text-sarang-purple dark:text-sarang-periwinkle"
+                    : "text-gray-600 dark:text-gray-300"
                 }`}
               >
                 {item.label}
@@ -72,6 +73,8 @@ export const Navigation = () => {
                 )}
               </Link>
             ))}
+            
+            <ThemeToggle />
             
             {!isAuthenticated ? (
               <Link to="/auth">
