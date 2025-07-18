@@ -14,6 +14,7 @@ import MoodHistory from "./pages/MoodHistory";
 import Settings from "./pages/Settings";
 import About from "./pages/About";
 import NotFound from "./pages/NotFound";
+import { AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
 
 const queryClient = new QueryClient();
 
@@ -27,8 +28,9 @@ const App = () => (
           <BrowserRouter>
             <Layout>
               <Routes>
-                <Route path="/" element={<Home />} />
                 <Route path="/auth" element={<Auth />} />
+                <Route path="/sso-callback" element={<AuthenticateWithRedirectCallback />} />
+                <Route path="/" element={<Home />} />
                 <Route path="/recommendations" element={<Recommendations />} />
                 <Route path="/mood-history" element={<MoodHistory />} />
                 <Route path="/settings" element={<Settings />} />

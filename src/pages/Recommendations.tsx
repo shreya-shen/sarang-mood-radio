@@ -1,12 +1,13 @@
-
 import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Play, ArrowUp, Music } from "lucide-react";
+import { Play, ArrowUp, Music, Download, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { useAuthenticatedFetch } from "@/hooks/useAuthenticatedFetch";
+import SpotifyPlayer from "@/components/SpotifyPlayer";
 
 interface Song {
   trackName: string;
@@ -14,6 +15,9 @@ interface Song {
   valence: number;
   energy: number;
   spotifyId?: string;
+  spotify_uri?: string;
+  track_name?: string;
+  artist_name?: string;
 }
 
 const Recommendations = () => {
@@ -21,8 +25,13 @@ const Recommendations = () => {
   const navigate = useNavigate();
   const [playlist, setPlaylist] = useState<Song[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [spotifyConnected, setSpotifyConnected] = useState(false);
+  const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
+  const [isExportingPlaylist, setIsExportingPlaylist] = useState(false);
+  const [hasPersonalization, setHasPersonalization] = useState(false);
+  const { authenticatedFetch } = useAuthenticatedFetch();
 
-  const { sentiment, moodText } = location.state || {};
+  const { sentiment, moodText, playlistData } = location.state || {};
 
   useEffect(() => {
     if (!sentiment) {
@@ -30,15 +39,98 @@ const Recommendations = () => {
       return;
     }
 
-    // Generate mock playlist based on sentiment
-    generatePlaylist();
-  }, [sentiment, navigate]);
+    // If we have existing playlist data, use it; otherwise generate new playlist
+    if (playlistData && playlistData.recommendations) {
+      // Use existing playlist data
+      const transformedSongs: Song[] = playlistData.recommendations.map((song: any) => ({
+        trackName: song.track_name,
+        artistName: song.artist_name,
+        valence: song.valence,
+        energy: song.energy,
+        spotifyId: song.spotify_id,
+        spotify_uri: song.spotify_uri
+      }));
+      setPlaylist(transformedSongs);
+      setIsLoading(false);
+    } else {
+      // Generate new playlist based on mood
+      generatePlaylist();
+    }
+    
+    checkSpotifyConnection();
+  }, [sentiment, navigate, playlistData]);
 
-  const generatePlaylist = () => {
+  const checkSpotifyConnection = async () => {
+    try {
+      const response = await authenticatedFetch('/api/spotify/status');
+      if (response.ok) {
+        const data = await response.json();
+        setSpotifyConnected(data.connected);
+        
+        // Check for personalization if connected
+        if (data.connected) {
+          checkPersonalizationStatus();
+        }
+      }
+    } catch (error) {
+      console.error('Error checking Spotify connection:', error);
+    }
+  };
+
+  const checkPersonalizationStatus = async () => {
+    try {
+      const response = await authenticatedFetch('/api/spotify/top-tracks-permission-status');
+      if (response.ok) {
+        const data = await response.json();
+        setHasPersonalization(data.hasPermission && data.tracksCount > 0);
+      }
+    } catch (error) {
+      console.error('Error checking personalization status:', error);
+    }
+  };
+
+  const generatePlaylist = async () => {
     setIsLoading(true);
     
-    // Mock playlist generation with gradual valence increase
-    setTimeout(() => {
+    try {
+      const response = await authenticatedFetch('/api/playlist/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          moodText: moodText,
+          preferences: {}
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Playlist generation failed:', response.status, errorText);
+        throw new Error('Failed to generate playlist');
+      }
+
+      const data = await response.json();
+      
+      // Transform the Python response to match our interface
+      const transformedSongs: Song[] = data.recommendations.map((song: any) => ({
+        trackName: song.track_name,
+        artistName: song.artist_name,
+        valence: song.valence,
+        energy: song.energy,
+        spotifyId: song.spotify_id,
+        spotify_uri: song.spotify_uri
+      }));
+
+      setPlaylist(transformedSongs);
+      setIsLoading(false);
+      toast.success("Your personalized playlist is ready!");
+    } catch (error) {
+      console.error('Error generating playlist:', error);
+      toast.error("Failed to generate playlist. Please try again.");
+      setIsLoading(false);
+      
+      // Fallback to mock data
       const mockSongs: Song[] = [
         { trackName: "Khamaaj", artistName: "Shafqat Amanat Ali", valence: 0.22, energy: 0.35 },
         { trackName: "Breathe Me", artistName: "Sia", valence: 0.28, energy: 0.40 },
@@ -51,12 +143,67 @@ const Recommendations = () => {
         { trackName: "Uptown Funk", artistName: "Mark Ronson ft. Bruno Mars", valence: 0.80, energy: 0.85 },
         { trackName: "Dancing Queen", artistName: "ABBA", valence: 0.88, energy: 0.90 }
       ];
-
       setPlaylist(mockSongs);
-      setIsLoading(false);
-      toast.success("Your personalized playlist is ready!");
-    }, 1500);
+    }
   };
+
+  const exportToSpotify = async () => {
+    if (!spotifyConnected) {
+      toast.error("Please connect your Spotify account first");
+      navigate("/settings");
+      return;
+    }
+
+    setIsExportingPlaylist(true);
+    try {
+      const response = await authenticatedFetch('/api/spotify/create-playlist', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          moodText: moodText,
+          tracks: playlist.map(song => ({
+            spotify_uri: song.spotify_uri,
+            spotify_id: song.spotifyId,
+            track_name: song.trackName,
+            artist_name: song.artistName
+          }))
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success("Playlist exported to Spotify!");
+        
+        // Open the playlist in Spotify
+        if (data.playlist_url) {
+          window.open(data.playlist_url, '_blank');
+        }
+      } else {
+        throw new Error('Failed to export playlist');
+      }
+    } catch (error) {
+      console.error('Error exporting playlist:', error);
+      toast.error("Failed to export playlist to Spotify");
+    } finally {
+      setIsExportingPlaylist(false);
+    }
+  };
+
+  const handleConnectSpotify = () => {
+    navigate("/settings");
+  };
+
+  // Normalize playlist data for SpotifyPlayer component
+  const normalizedTracks = playlist.map(song => ({
+    track_name: song.trackName,
+    artist_name: song.artistName,
+    spotify_uri: song.spotify_uri,
+    spotify_id: song.spotifyId,
+    valence: song.valence,
+    energy: song.energy
+  }));
 
   const getValenceColor = (valence: number) => {
     if (valence < 0.3) return "bg-blue-400";
@@ -131,69 +278,80 @@ const Recommendations = () => {
             <div className="flex flex-col items-center space-y-4">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sarang-purple"></div>
               <p className="text-gray-600">Curating your perfect playlist...</p>
+              {hasPersonalization && (
+                <div className="bg-sarang-purple/10 border border-sarang-purple/20 rounded-lg p-3 mt-4">
+                  <p className="text-sm text-sarang-purple font-medium">
+                    ✨ We are using your top played tracks to provide an enhanced experience for the playlist generation.
+                  </p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-sarang-purple">
-              Therapeutic Journey ({playlist.length} songs)
-            </h2>
-            <Button className="bg-sarang-purple hover:bg-sarang-purple/90">
-              <Music className="w-4 h-4 mr-2" />
-              Export to Spotify
-            </Button>
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Playlist Cards */}
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-semibold text-gray-800">
+                  Recommended Songs
+                </h2>
+                {hasPersonalization && (
+                  <p className="text-sm text-sarang-purple mt-1">
+                    ✨ Personalized using your top played tracks
+                  </p>
+                )}
+              </div>
+              <Button
+                onClick={exportToSpotify}
+                disabled={isExportingPlaylist || !spotifyConnected}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                {isExportingPlaylist ? (
+                  <>
+                    <div className="w-4 h-4 mr-2 animate-spin border-2 border-white border-t-transparent rounded-full"></div>
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Export to Spotify
+                  </>
+                )}
+              </Button>
+            </div>
 
-          <div className="grid gap-4">
+            {/* Existing playlist cards */}
             {playlist.map((song, index) => (
-              <Card key={index} className="mood-card hover:scale-[1.02] transition-transform">
+              <Card key={index} className="mood-card hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setCurrentTrackIndex(index)}>
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-r from-sarang-lavender to-sarang-purple rounded-full text-white font-bold">
-                        {index + 1}
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-lg text-gray-800">
-                          {song.trackName}
-                        </h3>
-                        <p className="text-gray-600">{song.artistName}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center space-x-6">
-                      {/* Mood indicators */}
-                      <div className="flex items-center space-x-2">
-                        <span className="text-2xl">{getMoodEmoji(song.valence)}</span>
-                        <div className="text-sm space-y-1">
-                          <div className="flex items-center space-x-2">
-                            <span className="text-gray-500 w-12">Joy:</span>
-                            <div className="w-16 bg-gray-200 rounded-full h-2">
-                              <div 
-                                className={`h-2 rounded-full ${getValenceColor(song.valence)}`}
-                                style={{ width: `${song.valence * 100}%` }}
-                              ></div>
-                            </div>
-                            <span className="text-xs text-gray-500">{Math.round(song.valence * 100)}%</span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-gray-500 w-12">Energy:</span>
-                            <div className="w-16 bg-gray-200 rounded-full h-2">
-                              <div 
-                                className={`h-2 rounded-full ${getEnergyColor(song.energy)}`}
-                                style={{ width: `${song.energy * 100}%` }}
-                              ></div>
-                            </div>
-                            <span className="text-xs text-gray-500">{Math.round(song.energy * 100)}%</span>
-                          </div>
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3">
+                        <div className="bg-sarang-purple/20 rounded-full p-2">
+                          <Music className="w-4 h-4 text-sarang-purple" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-800">{song.trackName}</h3>
+                          <p className="text-gray-600">{song.artistName}</p>
                         </div>
                       </div>
-
-                      <Button size="sm" className="bg-sarang-purple hover:bg-sarang-purple/90">
-                        <Play className="w-4 h-4 mr-1" />
-                        Play
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <div className="text-right">
+                        <div className="text-sm text-gray-500">Valence: {song.valence.toFixed(2)}</div>
+                        <div className="text-sm text-gray-500">Energy: {song.energy.toFixed(2)}</div>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="bg-sarang-purple hover:bg-sarang-purple/90"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentTrackIndex(index);
+                        }}
+                      >
+                        <Play className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>
@@ -202,35 +360,46 @@ const Recommendations = () => {
             ))}
           </div>
 
-          {/* Uplift Visualization */}
-          <Card className="mood-card">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <ArrowUp className="w-5 h-5 text-sarang-purple" />
-                <span>Mood Journey</span>
-              </CardTitle>
-              <CardDescription>
-                Watch how this playlist gradually uplifts your mood using music therapy principles
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>Starting Mood: {Math.round(playlist[0]?.valence * 100)}% Joy</span>
-                  <span>Ending Mood: {Math.round(playlist[playlist.length - 1]?.valence * 100)}% Joy</span>
-                </div>
-                <Progress 
-                  value={((playlist[playlist.length - 1]?.valence - playlist[0]?.valence) + 1) * 50} 
-                  className="h-4"
-                />
-                <p className="text-sm text-gray-600 text-center">
-                  This playlist increases your joy level by {Math.round((playlist[playlist.length - 1]?.valence - playlist[0]?.valence) * 100)}%
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Spotify Player */}
+          <div className="lg:sticky lg:top-8 lg:h-fit">
+            <SpotifyPlayer
+              tracks={normalizedTracks}
+              currentTrackIndex={currentTrackIndex}
+              onTrackChange={setCurrentTrackIndex}
+              isConnected={spotifyConnected}
+              onConnectRequest={handleConnectSpotify}
+            />
+          </div>
         </div>
       )}
+
+      {/* Uplift Visualization */}
+      <Card className="mood-card">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <ArrowUp className="w-5 h-5 text-sarang-purple" />
+            <span>Mood Journey</span>
+          </CardTitle>
+          <CardDescription>
+            Watch how this playlist gradually uplifts your mood using music therapy principles
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Starting Mood: {Math.round(playlist[0]?.valence * 100)}% Joy</span>
+              <span>Ending Mood: {Math.round(playlist[playlist.length - 1]?.valence * 100)}% Joy</span>
+            </div>
+            <Progress 
+              value={((playlist[playlist.length - 1]?.valence - playlist[0]?.valence) + 1) * 50} 
+              className="h-4"
+            />
+            <p className="text-sm text-gray-600 text-center">
+              This playlist increases your joy level by {Math.round((playlist[playlist.length - 1]?.valence - playlist[0]?.valence) * 100)}%
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

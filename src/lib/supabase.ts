@@ -1,15 +1,19 @@
-
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+declare global {
+  interface ImportMeta {
+    env: {
+      VITE_SUPABASE_URL: string;
+      VITE_SUPABASE_ANON_KEY: string;
+    };
+  }
+}
 
-// Only create client if both URL and key are provided
-export const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 
-// Database types
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
 export interface MoodLog {
   id: string
   user_id: string
@@ -21,6 +25,14 @@ export interface MoodLog {
   created_at: string
 }
 
+export interface PlaylistSong {
+  track_name: string
+  artist_name: string
+  valence: number
+  energy: number
+  spotify_id?: string
+}
+
 export interface Playlist {
   id: string
   user_id: string
@@ -28,14 +40,6 @@ export interface Playlist {
   songs: PlaylistSong[]
   generated_at: string
   created_at: string
-}
-
-export interface PlaylistSong {
-  track_name: string
-  artist_name: string
-  valence: number
-  energy: number
-  spotify_id?: string
 }
 
 export interface SpotifyLink {

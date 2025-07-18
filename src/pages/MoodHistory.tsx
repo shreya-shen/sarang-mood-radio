@@ -1,10 +1,14 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Calendar, TrendingUp, Music, HeadphonesIcon } from "lucide-react";
+import { useUser } from "@clerk/clerk-react";
+import { useAuthenticatedFetch } from "@/hooks/useAuthenticatedFetch";
+import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 interface MoodEntry {
   id: string;
@@ -12,61 +16,78 @@ interface MoodEntry {
   inputText: string;
   sentimentScore: number;
   moodLabel: string;
-  songsCount: number;
+  songsCount?: number;
+}
+
+interface PlaylistEntry {
+  id: string;
+  userId: string;
+  inputText: string;
+  songData: any; // Match your schema: camelCase
+  created_at: string;
 }
 
 const MoodHistory = () => {
-  // Mock data for demonstration
-  const [moodHistory] = useState<MoodEntry[]>([
-    {
-      id: "1",
-      date: "2024-01-15",
-      inputText: "Feeling overwhelmed with work deadlines...",
-      sentimentScore: -0.6,
-      moodLabel: "Low",
-      songsCount: 10
-    },
-    {
-      id: "2", 
-      date: "2024-01-16",
-      inputText: "Had a good conversation with friends today",
-      sentimentScore: 0.3,
-      moodLabel: "Happy",
-      songsCount: 8
-    },
-    {
-      id: "3",
-      date: "2024-01-17",
-      inputText: "Feeling neutral, just going through the motions",
-      sentimentScore: 0.1,
-      moodLabel: "Neutral",
-      songsCount: 12
-    },
-    {
-      id: "4",
-      date: "2024-01-18",
-      inputText: "Really excited about the weekend plans!",
-      sentimentScore: 0.7,
-      moodLabel: "Excited",
-      songsCount: 6
-    },
-    {
-      id: "5",
-      date: "2024-01-19",
-      inputText: "A bit anxious about the upcoming presentation",
-      sentimentScore: -0.2,
-      moodLabel: "Calm",
-      songsCount: 9
-    },
-    {
-      id: "6",
-      date: "2024-01-20",
-      inputText: "Today was amazing! Everything went perfectly",
-      sentimentScore: 0.9,
-      moodLabel: "Excited",
-      songsCount: 5
+  const [moodHistory, setMoodHistory] = useState<MoodEntry[]>([]);
+  const [playlistHistory, setPlaylistHistory] = useState<PlaylistEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { isSignedIn } = useUser();
+  const { authenticatedFetch } = useAuthenticatedFetch();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      navigate("/auth");
+      return;
     }
-  ]);
+    
+    fetchUserHistory();
+  }, [isSignedIn, navigate]);
+
+  const fetchUserHistory = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch mood history
+      const moodResponse = await authenticatedFetch('/api/mood/history');
+      let formattedMoodData: MoodEntry[] = [];
+      
+      if (moodResponse.ok) {
+        const moodData = await moodResponse.json();
+        formattedMoodData = moodData.map((entry: any) => ({
+          id: entry.id,
+          date: entry.created_at,
+          inputText: entry.inputText, // Match your schema: camelCase
+          sentimentScore: entry.sentimentScore, // Match your schema: camelCase
+          moodLabel: entry.sentimentScore > 0.5 ? "Happy" : entry.sentimentScore > 0 ? "Neutral" : "Low", // Calculate label since it's not stored
+          songsCount: 0 // Will be updated with playlist data
+        }));
+        setMoodHistory(formattedMoodData);
+      }
+
+      // Fetch playlist history
+      const playlistResponse = await authenticatedFetch('/api/playlist/history');
+      if (playlistResponse.ok) {
+        const playlistData = await playlistResponse.json();
+        setPlaylistHistory(playlistData);
+        
+        // Update mood entries with song counts
+        const updatedMoodData = formattedMoodData.map((mood: MoodEntry) => {
+          const playlist = playlistData.find((p: PlaylistEntry) => p.inputText === mood.inputText); // Match by inputText since no direct mood_id
+          return {
+            ...mood,
+            songsCount: playlist?.songData?.recommendations?.length || 0
+          };
+        });
+        setMoodHistory(updatedMoodData);
+      }
+    } catch (error) {
+      console.error('Error fetching history:', error);
+      toast.error("Failed to load your history");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const chartData = moodHistory.map(entry => ({
     date: new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
@@ -82,9 +103,65 @@ const MoodHistory = () => {
     return "bg-emerald-100 text-emerald-800 border-emerald-200";
   };
 
+  const getPlaylistForMood = (moodId: string) => {
+    // Since we don't have direct mood_id linking, match by inputText
+    const mood = moodHistory.find(m => m.id === moodId);
+    return playlistHistory.find(p => p.inputText === mood?.inputText);
+  };
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
+        <div className="text-center space-y-4">
+          <h1 className="text-3xl md:text-4xl font-bold text-sarang-purple">
+            My Mood Journey
+          </h1>
+          <div className="flex justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sarang-purple"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show empty state if no history
+  if (moodHistory.length === 0) {
+    return (
+      <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
+        <div className="text-center space-y-4">
+          <h1 className="text-3xl md:text-4xl font-bold text-sarang-purple">
+            My Mood Journey
+          </h1>
+          <p className="text-gray-600 max-w-2xl mx-auto">
+            Track your emotional wellness and see how music therapy is helping you over time
+          </p>
+        </div>
+        
+        <Card className="mood-card text-center py-16">
+          <CardContent>
+            <HeadphonesIcon className="h-16 w-16 text-sarang-lavender mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">
+              Your history will appear here
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Start by analyzing your mood to see your journey unfold
+            </p>
+            <Button 
+              onClick={() => navigate("/")}
+              className="bg-gradient-to-r from-sarang-purple to-sarang-periwinkle hover:from-sarang-purple/90 hover:to-sarang-periwinkle/90 text-white"
+            >
+              Analyze Your Mood
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const averageMood = moodHistory.reduce((sum, entry) => sum + entry.sentimentScore, 0) / moodHistory.length;
   const totalSessions = moodHistory.length;
-  const totalSongs = moodHistory.reduce((sum, entry) => sum + entry.songsCount, 0);
+  const totalSongs = moodHistory.reduce((sum, entry) => sum + (entry.songsCount || 0), 0);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
@@ -230,12 +307,43 @@ const MoodHistory = () => {
                   <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
                     <span>Score: {entry.sentimentScore.toFixed(2)}</span>
                     <span>•</span>
-                    <span>{entry.songsCount} songs recommended</span>
+                    <span>{entry.songsCount || 0} songs recommended</span>
                   </div>
                 </div>
-                <Button size="sm" variant="outline" className="border-sarang-lavender text-sarang-purple hover:bg-sarang-lavender/20">
-                  View Playlist
-                </Button>
+                {getPlaylistForMood(entry.id) ? (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="border-sarang-lavender text-sarang-purple hover:bg-sarang-lavender/20"
+                    onClick={() => {
+                      const playlist = getPlaylistForMood(entry.id);
+                      if (playlist) {
+                        navigate("/recommendations", { 
+                          state: { 
+                            sentiment: { 
+                              score: entry.sentimentScore, 
+                              label: entry.moodLabel, 
+                              confidence: 0.8 
+                            }, 
+                            moodText: entry.inputText,
+                            playlistData: playlist.songData
+                          } 
+                        });
+                      }
+                    }}
+                  >
+                    View Playlist
+                  </Button>
+                ) : (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="border-gray-300 text-gray-500 cursor-not-allowed"
+                    disabled
+                  >
+                    No Playlist
+                  </Button>
+                )}
               </div>
             ))}
           </div>

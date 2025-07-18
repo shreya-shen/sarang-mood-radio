@@ -1,12 +1,14 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useUser } from "@clerk/clerk-react";
 import { toast } from "sonner";
+import { useAuthenticatedFetch } from "@/hooks/useAuthenticatedFetch";
 
 const Home = () => {
   const [moodText, setMoodText] = useState("");
@@ -17,8 +19,51 @@ const Home = () => {
     confidence: number;
   } | null>(null);
   const navigate = useNavigate();
+  const { isSignedIn, user } = useUser();
+  const { authenticatedFetch } = useAuthenticatedFetch();
+
+  // Handle pending username from signup
+  useEffect(() => {
+    const setPendingUsername = async () => {
+      if (isSignedIn) {
+        const pendingUsername = localStorage.getItem('pendingUsername');
+        if (pendingUsername) {
+          try {
+            console.log('Setting pending username:', pendingUsername);
+            const response = await authenticatedFetch('/api/user/set-username', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username: pendingUsername })
+            });
+            
+            if (!response.ok) {
+              throw new Error('Failed to set username');
+            }
+            
+            const result = await response.json();
+            console.log('Username set result:', result);
+            
+            // Clear the pending username
+            localStorage.removeItem('pendingUsername');
+            toast.success('Profile setup completed!');
+          } catch (error) {
+            console.error('Error setting username:', error);
+            toast.error('Failed to complete profile setup');
+          }
+        }
+      }
+    };
+
+    setPendingUsername();
+  }, [isSignedIn, authenticatedFetch]);
 
   const handleAnalyzeMood = async () => {
+    if (!isSignedIn) {
+      toast.error("Please sign in to analyze your mood");
+      navigate("/auth");
+      return;
+    }
+
     if (!moodText.trim()) {
       toast.error("Please describe how you're feeling");
       return;
@@ -26,7 +71,49 @@ const Home = () => {
 
     setIsAnalyzing(true);
     
-    setTimeout(() => {
+    try {
+      // Analyze mood sentiment
+      const response = await authenticatedFetch('/api/mood/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: moodText })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze mood');
+      }
+
+      const sentimentData = await response.json();
+      setSentiment(sentimentData);
+      
+      // Log mood to database
+      try {
+        await authenticatedFetch('/api/mood/log', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            text: moodText,
+            sentiment_score: sentimentData.score,
+            sentiment_label: sentimentData.label
+          })
+        });
+      } catch (logError) {
+        console.error('Error logging mood to database:', logError);
+        // Don't show error to user as the analysis still worked
+      }
+      
+      setIsAnalyzing(false);
+      toast.success("Mood analyzed successfully!");
+    } catch (error) {
+      console.error('Error analyzing mood:', error);
+      setIsAnalyzing(false);
+      toast.error("Failed to analyze mood. Please try again.");
+      
+      // Fallback to mock data
       const mockSentiments = [
         { score: -0.7, label: "Low", confidence: 0.85 },
         { score: -0.3, label: "Calm", confidence: 0.78 },
@@ -37,13 +124,16 @@ const Home = () => {
       
       const randomSentiment = mockSentiments[Math.floor(Math.random() * mockSentiments.length)];
       setSentiment(randomSentiment);
-      setIsAnalyzing(false);
-      
-      toast.success("Mood analyzed successfully!");
-    }, 2000);
+    }
   };
 
   const handleGetRecommendations = () => {
+    if (!isSignedIn) {
+      toast.error("Please sign in to get recommendations");
+      navigate("/auth");
+      return;
+    }
+    
     if (sentiment) {
       navigate("/recommendations", { state: { sentiment, moodText } });
     }

@@ -3,8 +3,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { HeadphonesIcon, User, LogOut } from "lucide-react";
-import { useApp } from '@/contexts/AppContext'
-import { supabaseService } from '@/services/supabase'
+import { useUser, useClerk } from '@clerk/clerk-react';
 import { toast } from "sonner";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
@@ -17,23 +16,22 @@ import {
 export const Navigation = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isAuthenticated, user, dataSource } = useApp()
+  const { isSignedIn, user } = useUser();
+  const { signOut } = useClerk();
 
   const navItems = [
     { path: "/", label: "Home" },
-    { path: "/recommendations", label: "Discover" },
     { path: "/mood-history", label: "History" },
     { path: "/about", label: "About" },
   ];
 
   const handleSignOut = async () => {
     try {
-      await supabaseService.signOut()
-      toast.success("Signed out successfully")
-      navigate("/")
-      window.location.reload()
+      await signOut();
+      toast.success("Signed out successfully");
+      navigate("/");
     } catch (error) {
-      toast.error("Error signing out")
+      toast.error("Error signing out");
     }
   };
 
@@ -76,7 +74,7 @@ export const Navigation = () => {
             
             <ThemeToggle />
             
-            {!isAuthenticated ? (
+            {!isSignedIn ? (
               <Link to="/auth">
                 <Button className="bg-gradient-to-r from-sarang-purple to-sarang-periwinkle hover:from-sarang-purple/90 hover:to-sarang-periwinkle/90 text-white px-6 py-2 rounded-full font-medium transition-all duration-200 hover:shadow-lg">
                   Sign In
@@ -93,10 +91,10 @@ export const Navigation = () => {
                   <DropdownMenuItem className="font-normal">
                     <div className="flex flex-col space-y-1">
                       <p className="text-sm font-medium leading-none">
-                        {user?.email || 'User'}
+                        {user?.primaryEmailAddress?.emailAddress || user?.firstName || 'User'}
                       </p>
                       <p className="text-xs leading-none text-muted-foreground">
-                        via {dataSource}
+                        via Clerk
                       </p>
                     </div>
                   </DropdownMenuItem>
