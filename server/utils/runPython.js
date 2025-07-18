@@ -1,8 +1,12 @@
 const { spawn } = require('child_process');
+const path = require('path');
 
 const runPythonScript = (inputMoodText, userPreferences) => {
   return new Promise((resolve, reject) => {
-    const python = spawn('python3', ['python/moodBasedRecs.py']);
+    const pythonDir = path.join(__dirname, '../python');
+    const python = spawn('python', ['moodBasedRecs.py'], {
+      cwd: pythonDir
+    });
 
     let output = '';
     let error = '';
